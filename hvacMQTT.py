@@ -20,7 +20,6 @@ import Adafruit_IO
 from Adafruit_IO import Client, RequestError
 import time
 
-
 ########################
 # Globals
 ########################
@@ -35,129 +34,104 @@ localTopic = "hvac-monitor"        # Local MQTT topic to monitor
 localTimeOut = 120          # Local MQTT session timeout
 
 adafruitUser = "jfranklyn"      # Adafruit.IO user ID
-adafruitKey = "aio_CHEe10hCx2u0UyllHFi1UltiIu8V"    # Adafruit.IO user key
+adafruitKey = "aio_FwbW409G1wKMn6ulWV9B1j56FKX6"    # Adafruit.IO user key
 adafruitTopic = "hvac-monitor"        # Adafruit.IO alarm topic
-LOOP_INTERVAL = 15 # seconds
-
-sensorList = {}             # List of sensor objects
-
-########################
-# Classes and Methods
-########################
-
-class sensor():
-    def __init__(self):
-        self.name = ""      # Name of sensor in MQTT
-        self.humanName = "" # Human-meaningful name (e.g., "front door")
-        self.lastSeen = 0   # Number of seconds since the sensor was last seen
-        self.state = "unknown"  # State of the object: unknown, open, or closed
-
-    def setState(self, newstate):
-        self.state = newState
-
-    def getState(self):
-        return self.state
-
-    def resetHeartbeat(self):
-        self.lastSeen = 0
-
-    def setname(self, newName, humanName):
-        self.name = newName
-        self.humanName = humanName
-
-    def getname(self):
-        return self.humanName
-
-    def checkState(self, newState):
-        if ("unknown" == self.state):
-            self.state = newState
-            return 0
-        else:
-            if (newState != self.state):
-                self.state = newState
-                if ("closed" == self.state):
-                    return -1
-                else:
-                    return 1
-        return 0
-        
-
-class sensorList():
-    def __init__(self):
-        self.sensorList = {}
-
-    def addSensor(self, sensorName, humanName):
-        self.sensorList[sensorName] = sensor()
-        self.sensorList[sensorName].setname(sensorName, humanName)
-
-    def getSensorName(self, sensorID):
-        return self.sensorList[sensorID].getname()
-
-    def sensorState(self, sensorID, monitorState):
-        rv = self.sensorList[sensorID].checkState(monitorState)
-        if (0 != rv):
-            # State changed!
-            if (0 > rv):
-                outBuf = "INFO "+self.getSensorName(sensorID)+" "+monitorState
-                print(outBuf)
-            else:
-                outBuf = "ALARM "+self.getSensorName(sensorID)+" "+monitorState
-                print(outBuf)
-                print("Initiating connection to Adafruit.IO")
-                AIOclient = Adafruit_IO.MQTTClient(adafruitUser, adafruitKey)
-                print("Setting callbacks for Adafruit.IO")
-                AIOclient.on_connect = AIOconnected
-                AIOclient.on_disconnect = AIOdisconnected
-                AIOclient.on_message = AIOmessage
-                print("Connecting to Adafruit.IO")
-                AIOclient.connect()
-                time.sleep(5)
-                print("Publishing outBuf")
-                # AIOclient.publish("alarms", outBuf)
-                AIOclient.publish("hvac-monitor", outBuf)
-                print("Disconnecting")
-                AIOclient.disconnect()
-
+LOOP_INTERVAL = 5 # seconds
 
 ########################
 # Functions
 ########################
 
-# Callback functions for Adafruit.IO connections
-def AIOconnected(client):
-    # client.subscribe('hvac-monitor')
-    print("Connected to Adafruit.IO")
+# The callback for when the client receives a CONNACK response from the server.
+def on_connect(client, userdata, flags, rc):
+    print("Connected with sensor client result code "+str(rc))
 
-def AIOdisconnected(client):
-    print("adafruit.io client disconnected!")
+    # Subscribing in on_connect() means that if we lose the connection and
+    # reconnect then subscriptions will be renewed.
+    # add subscription here as needed for each sensor
+    client.subscribe("hvac-monitor")
+    client.subscribe("hvac-monitor/returnair/temperature")
+    client.subscribe("hvac-monitor/supplyair/temperature")
+    client.subscribe("hvac-monitor/suctionline/temperature")
+    client.subscribe("hvac-monitor/liquidline/temperature")
+    client.subscribe("hvac-monitor/inside/voltcurpow")
+    client.subscribe("hvac-monitor/inside/current")
+    client.subscribe("hvac-monitor/inside/power")
+    client.subscribe("hvac-monitor/outside/voltcurpow")
+    client.subscribe("hvac-monitor/outside/current")    
+    client.subscribe("hvac-monitor/outside/power")
 
-def AIOmessage(client, feed_id, payload):
-    print("adafruit.io received ", payload)
+# Subscript to sensor connected status messages
+    client.subscribe("sensors/connected/insidevoltcurr")
+    client.subscribe("sensors/connected/outsidevoltcurr")
+    client.subscribe("sensors/connected/returnairtemp")    
+    client.subscribe("sensors/connected/supplyairtemp")
+    client.subscribe("sensors/connected/suctionlinetemp")
+    client.subscribe("sensors/connected/liquidlinetemp")
+    
+# The callback for when a PUBLISH message is received from the server.
+def on_message(client, userdata, msg):
+    print('payload= ',msg.payload)
+    # convert byte literals (python2) to strings
+    payloadstr = msg.payload.decode('UTF-8')
 
+    try:
+        (sensorID, sensorValue) = payloadstr.split()
 
-# returnState takes a numeric voltage value from the sensor and
-# returns the state of the monitored device. With a voltage divider
-# that uses a 1M ohm R1 and a 470K ohm R2, the "closed" state returns
-# 1024 and the open state returns between 1 and 40.
+    except ValueError as ve:
+        print('Value error reading sensor {}{}{}'.format(type(ve).__name__, ve, payloadstr))
+  
+    fsensorValue = float(sensorValue)
+    print('sensor ID = ', sensorID)
+    print('float sensorValue = ', fsensorValue)
+    print('sensorValue = ', sensorValue)
+    
+# temperature sensors
+    if(sensorID=="hvac-monitor/returnair/temperature"):
+        print('Return air temp = ', fsensorValue)
+        aio.send_data('return-air',fsensorValue)
+    if(sensorID=="hvac-monitor/supplyair/temperature"):
+        aio.send_data('supply-air',fsensorValue)
+    if(sensorID=="hvac-monitor/suctionline/temperature"):
+        aio.send_data('suction-line',fsensorValue)
+    if(sensorID=="hvac-monitor/liquidline/temperature"):
+        aio.send('supply-line',fsensorValue)
 
-def returnState(inVal):
-    if (1000 < inVal):
-        return "closed"
-    if (100 > inVal):
-        return "open"
-    else:
-        return "unknown"
+# indoor voltage, current, power sensors           
+    if(sensorID=="hvac-monitor/inside/voltcurpow"):
+        print('Inside Voltage Current Power = ', fsensorValue)
+        (fvolts, fcurrent, fpower) = sensorValue.split()
+        aio.send('volt-ctrl-indoor',fvolts)
+        aio.send('cur-ctrl-indoor',fcurrent)
+        aio.send('pow-ctrl-indoor',fpower)
+        
+# outdoor voltage, current, power sensors          
+    if(sensorID=="hvac-monitor/outside/volcurpow"):
+        aio.send('volt-ctrl-outdoor',fsensorValue)
+    if(sensorID=="hvac-monitor/outside/current"):
+        aio.send('curr-ctrl-outdoor',fsensorValue)
+    if(sensorID=="hvac-monitor/outside/power"):
+        aio.send('pow-ctrl-outdoor',fsensorValue)
+
+# handle sensor status messages
+    if((sensorID=="sensors/connected/insidevoltcurr") and (sensorValue=='False')):
+        # turn the sensor red to show that it is offline
+        aio.send('volt-ctrl-indoor',999)
 
 # Create an instance of the REST client
 aio = Client(adafruitUser, adafruitKey)
 # Setup AdaFruit IO feeds
-alarm_feed = aio.feeds('hvac-monitor')
+#alarm_feed = aio.feeds('hvac-monitor')
 return_air_feed = aio.feeds('return-air')
 supply_air_feed = aio.feeds('supply-air')
 suction_line_feed = aio.feeds('suction-line')
 supply_line_feed = aio.feeds('supply-line')
-volt_ctrl_indoor_feed = aio.feeds('volt-crtl-indoor')
-current_ctrl_indoor_feed = aio.feeds('curr-crtl-indoor')
+volt_ctrl_indoor_feed = aio.feeds('volt-ctrl-indoor')
+current_ctrl_indoor_feed = aio.feeds('curr-ctrl-indoor')
+power_ctrl_indoor_feed = aio.feeds('pow-ctrl-indoor')
+volt_ctrl_outdoor_feed = aio.feeds('volt-ctrl-outdoor')
+current_ctrl_outdoor_feed = aio.feeds('curr-ctrl-outdoor')
+power_ctrl_outdoor_feed = aio.feeds('pow-ctrl-outdoor')
 
 ########################
 # Main
@@ -166,53 +140,23 @@ current_ctrl_indoor_feed = aio.feeds('curr-crtl-indoor')
 def main():
 
     while True:
-        sensList = sensorList()
-        sensList.addSensor("return_air_temp", "return air temperature")
-        sensList.addSensor("supply_air_temp", "supply air temperature")
-        sensList.addSensor("suction_line_temp", "suction line temperature")
-        sensList.addSensor("supply_line_temp", "supply line temperature")
-        sensList.addSensor("volt_ctrl_indoor", "volt ctrl indoor")
-        sensList.addSensor("volt_ctrl_outdoor", "volt ctrl outdoor")
-        sensList.addSensor("curr_ctrl_indoor", "current ctrl indoor")
-        sensList.addSensor("curr_ctrl_outdoor", "current ctrl outdoor")
-        
-        # The callback for when the client receives a CONNACK response from the server.
-        def on_connect(client, userdata, flags, rc):
-            print("Connected with result code "+str(rc))
-
-            # Subscribing in on_connect() means that if we lose the connection and
-            # reconnect then subscriptions will be renewed.
-            client.subscribe("hvac-monitor")
-
-        # The callback for when a PUBLISH message is received from the server.
-        def on_message(client, userdata, msg):
-            print('payload= ',msg.payload)
-            # convert byte literals (python2) to strings
-            payloadstr = msg.payload.decode('UTF-8')
-            (sensorID, sensorVoltage) = payloadstr.split()
-            #print('id voltage ', sensorID, sensorVoltage)
-            sensorVoltage = int(sensorVoltage)
-            sensorName = sensList.getSensorName(sensorID)
-            sensList.sensorState(sensorID, returnState(sensorVoltage))
-            # print(sensorName+" "+returnState(sensorVoltage))
-
-        client = mqtt.Client()
-        client.connect(localBroker, localPort, localTimeOut)
-        client.on_connect = on_connect
-        client.on_message = on_message
-        
-        # check the state of the AIO lights toggle
-        indoor_light_status = aio.receive(indoor_lights_feed.key)
-        if indoor_light_status.value == 'OFF':
-            #print ('AIO light switch toggle = OFF')
-            client.publish(localTopic, "RPI Zero W Online")
+ 
+        try:
+            client = mqtt.Client()
+            client.connect(localBroker, localPort, localTimeOut)
+            print ('connected to MQTT Server')
+            client.on_connect = on_connect
+            client.on_message = on_message
             
-            # Blocking call that processes network traffic, dispatches callbacks and
-            # handles reconnecting.
-            # Other loop*() functions are available that give a threaded interface and a
-            # manual interface.
+        except Exception as e:
+            print('Could not connect to MQTT Server {}{}'.format(type(e).__name__, e))
+            
+        # check the status of each sensor andreturn the value to the aio dashboard
+        client.publish(localTopic, "RPI Zero W Online")
+        
         time.sleep(LOOP_INTERVAL)
-        #client.loop_forever()
+        client.loop_forever()
+
 ##        print ('We are quitting')
 ##        quit()
 
