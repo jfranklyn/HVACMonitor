@@ -1,9 +1,11 @@
-# Complete project details at https://RandomNerdTutorials.com
-
+'''
+This file is executed on every boot (including wake-boot from deepsleep)
+Make a connection to the WLAN
+'''
 import time
-from umqttsimple import MQTTClient
-import ubinascii
-import machine
+#from umqttsimple import MQTTClient
+#import ubinascii
+#import machine
 import micropython
 import network
 import esp
@@ -16,21 +18,20 @@ password = 'Jayden2012'
 mqtt_server = '192.168.1.87'
 #EXAMPLE IP ADDRESS
 #mqtt_server = '192.168.1.144'
-client_id = ubinascii.hexlify(machine.unique_id())
-topic_sub = b'notification'
-topic_pub = b'hello'
+#client_id = ubinascii.hexlify(machine.unique_id())
+# added code to publish sensor connection status
+client_id = b'insidevoltcurr'
+connection_status_topic=b'sensors/connected/'+client_id
+topic_pub_voltcurr = b'hvac-monitor/inside/voltcurr'
+try:
+  station = network.WLAN(network.STA_IF)
+  station.active(True)
+  station.connect(ssid, password)
+  
+  if station.isconnected() == True:
+    print('Connection successful '+client_id)
+    print(station.ifconfig())
+  
+except Exception as e:
+  print('Connection Exception '+e)    
 
-last_message = 0
-message_interval = 5
-counter = 0
-
-station = network.WLAN(network.STA_IF)
-
-station.active(True)
-station.connect(ssid, password)
-
-while station.isconnected() == False:
-  pass
-
-print('Connection successful')
-print(station.ifconfig())
